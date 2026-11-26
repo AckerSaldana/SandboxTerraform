@@ -1,0 +1,95 @@
+# Plan y aplicacion de una etapa. Lo llaman terraform.yml y programados.yml.
+name: etapa
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: Carpeta dentro de stages/
+        required: true
+        type: string
+      service_account:
+        description: Cuenta de servicio de la etapa (salida stage_service_accounts de 0-bootstrap)
+        required: true
+        type: string
+      apply:
+        description: Aplica el plan
+        type: boolean
+        default: false
+      fail_on_changes:
+        description: Falla si el plan tiene cambios (deteccion de desviaciones)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    name: ${{ inputs.stage }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stages/${{ inputs.stage }}
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      # Terraform ignora las variables que una etapa no declara
+      TF_VAR_tfstate_bucket: ${{ vars.TFSTATE_BUCKET }}
+      TF_VAR_org_id: ${{ vars.ORG_ID }}
+      TF_VAR_billing_account: ${{ vars.BILLING_ACCOUNT }}
+      TF_VAR_prefix: ${{ vars.PREFIX }}
+      TF_VAR_platform_group: ${{ vars.PLATFORM_GROUP }}
+      TF_VAR_data_owners_group: ${{ vars.DATA_OWNERS_GROUP }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sin llaves: GitHub se identifica con Workload Identity Federation
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ inputs.service_account }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Init
+        run: terraform init -backend-config="bucket=${{ vars.TFSTATE_BUCKET }}" -backend-config="prefix=${{ inputs.stage }}"
+
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -out=plan.tfplan -detailed-exitcode -no-color
+          codigo=$?
+          echo "codigo=$codigo" >> "$GITHUB_OUTPUT"
+          # 0 = sin cambios, 2 = con cambios, 1 = error
+          if [ "$codigo" -eq 1 ]; then exit 1; fi
+
+      - name: Politicas sobre el plan
+        run: |
+          curl -fsSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz -C "$RUNNER_TEMP" conftest
+          terraform show -json plan.tfplan > plan.json
+          "$RUNNER_TEMP/conftest" test plan.json -p ../../policies/terraform
+
+      - name: Resumen
+        run: |
+          {
+            echo "### ${{ inputs.stage }}"
+            echo '```'
+            terraform show -no-color plan.tfplan | tail -n 60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Desviacion
+        if: inputs.fail_on_changes && steps.plan.outputs.codigo == '2'
+        run: |
+          echo "::error::La etapa ${{ inputs.stage }} difiere de lo desplegado"
+          exit 1
+
+      - name: Apply
+        if: inputs.apply && steps.plan.outputs.codigo == '2'
+        run: terraform apply plan.tfplan

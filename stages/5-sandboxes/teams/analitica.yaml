@@ -1,0 +1,9 @@
+# Equipo de ejemplo. Un archivo por equipo; el nombre del archivo es el
+# nombre del equipo.
+name: analitica
+owner_group: gcp-analitica@example.com
+cost_center: cc-1042
+expires: "2027-03-31"
+profile: rag
+size: m
+subnet_index: 0

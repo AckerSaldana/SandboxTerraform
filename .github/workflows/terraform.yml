@@ -1,0 +1,114 @@
+# Calidad en cada cambio. Plan en cada pull request. Aplicacion al llegar
+# a main, etapa por etapa y en orden.
+#
+# La etapa 0-bootstrap se aplica una sola vez a mano: crea la identidad
+# federada que este flujo necesita. Mientras la variable WIF_PROVIDER no
+# exista, los trabajos de plan y aplicacion se omiten.
+name: terraform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  calidad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Formato
+        run: terraform fmt -check -recursive -diff
+
+      - name: Validacion de cada etapa
+        run: |
+          for etapa in stages/*/; do
+            echo "::group::$etapa"
+            terraform -chdir="$etapa" init -backend=false -input=false
+            terraform -chdir="$etapa" validate
+            echo "::endgroup::"
+          done
+
+      - name: Pruebas de la fabrica de sandboxes
+        run: |
+          terraform -chdir=modules/sandbox-factory init -backend=false -input=false
+          terraform -chdir=modules/sandbox-factory test
+
+      - uses: terraform-linters/setup-tflint@v4
+      - name: tflint
+        run: tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl"
+
+      - name: Politicas y solicitudes de sandbox
+        run: |
+          curl -fsSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz -C "$RUNNER_TEMP" conftest
+          conftest="$RUNNER_TEMP/conftest"
+          "$conftest" verify -p policies/sandbox
+          "$conftest" verify -p policies/terraform
+          "$conftest" test stages/5-sandboxes/teams/*.yaml -p policies/sandbox -d stages/5-sandboxes/profiles.yaml
+          "$conftest" test --combine --namespace conjunto stages/5-sandboxes/teams/*.yaml -p policies/sandbox
+
+      - name: Pruebas de la funcion de apagado
+        run: python3 -m unittest discover -s tests
+
+      # Informativo: reporta hallazgos sin detener el flujo
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: true
+          quiet: true
+
+  org:
+    needs: calidad
+    if: vars.WIF_PROVIDER != ''
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: 1-org
+      service_account: ${{ vars.TF_SA_ORG }}
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+  security:
+    needs: org
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: 2-security
+      service_account: ${{ vars.TF_SA_SECURITY }}
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+  networks:
+    needs: security
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: 3-networks
+      service_account: ${{ vars.TF_SA_NETWORKS }}
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+  ai-platform:
+    needs: networks
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: 4-ai-platform
+      service_account: ${{ vars.TF_SA_AI_PLATFORM }}
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+  sandboxes:
+    needs: ai-platform
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: 5-sandboxes
+      service_account: ${{ vars.TF_SA_SANDBOXES }}
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}

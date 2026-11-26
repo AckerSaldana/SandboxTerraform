@@ -1,0 +1,23 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+plan.json
+crash.log
+.build/
+terraform.tfvars
+override.tf
+override.tf.json
+
+# Paquete de la funcion
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+
+# Credenciales: este repositorio no usa llaves
+*.json.key
+*-key.json
+credentials.json

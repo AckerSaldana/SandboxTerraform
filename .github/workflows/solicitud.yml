@@ -1,0 +1,57 @@
+# Autoservicio: un issue creado con el formulario "Solicitud de sandbox"
+# se convierte en un pull request con el archivo YAML del equipo.
+name: solicitud
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  crear-pr:
+    if: contains(github.event.issue.labels.*.name, 'sandbox')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NUMERO: ${{ github.event.issue.number }}
+      # El cuerpo del issue llega como dato, nunca como parte de un comando
+      ISSUE_BODY: ${{ github.event.issue.body }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+
+      - name: Convertir la solicitud
+        id: yaml
+        run: |
+          if salida="$(python3 scripts/formulario_a_yaml.py)"; then
+            echo "archivo=$salida" >> "$GITHUB_OUTPUT"
+          else
+            gh issue comment "$NUMERO" --body "No se pudo procesar la solicitud:
+          $salida"
+            exit 1
+          fi
+
+      - name: Revisar contra las politicas
+        run: |
+          curl -fsSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz -C "$RUNNER_TEMP" conftest
+          if ! "$RUNNER_TEMP/conftest" test "stages/5-sandboxes/teams/${{ steps.yaml.outputs.archivo }}" \
+               -p policies/sandbox -d stages/5-sandboxes/profiles.yaml --no-color > resultado.txt 2>&1; then
+            gh issue comment "$NUMERO" --body-file resultado.txt
+            exit 1
+          fi
+
+      - name: Abrir el pull request
+        run: |
+          rama="sandbox/solicitud-$NUMERO"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$rama"
+          git add stages/5-sandboxes/teams
+          git commit -m "Sandbox solicitado en #$NUMERO"
+          git push origin "$rama"
+          gh pr create --title "Sandbox solicitado en #$NUMERO" \
+            --body "Archivo generado desde el formulario. Cierra #$NUMERO." --head "$rama" --base main

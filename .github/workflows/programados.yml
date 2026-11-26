@@ -1,0 +1,55 @@
+# Tareas programadas: vencimiento de sandboxes (diario) y deteccion de
+# desviaciones entre el codigo y lo desplegado (semanal).
+name: programados
+
+on:
+  schedule:
+    - cron: "17 14 * * *" # diario
+    - cron: "43 15 * * 1" # lunes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  expiraciones:
+    if: github.event.schedule != '43 15 * * 1'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet pyyaml
+      - name: Sandboxes vencidos o por vencer
+        run: |
+          if python3 scripts/expiraciones.py --dias 14 > reporte.md; then
+            cat reporte.md
+            exit 0
+          fi
+          cat reporte.md >> "$GITHUB_STEP_SUMMARY"
+          gh label create expiracion --color FBCA04 --description "Sandbox vencido o por vencer" --force
+          abierto="$(gh issue list --label expiracion --state open --json number --jq '.[0].number')"
+          if [ -n "$abierto" ]; then
+            gh issue edit "$abierto" --body-file reporte.md
+          else
+            gh issue create --title "Sandboxes vencidos o por vencer" --label expiracion --body-file reporte.md
+          fi
+
+  desviacion:
+    if: github.event.schedule != '17 14 * * *' && vars.WIF_PROVIDER != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { stage: 1-org, sa: TF_SA_ORG }
+          - { stage: 2-security, sa: TF_SA_SECURITY }
+          - { stage: 3-networks, sa: TF_SA_NETWORKS }
+          - { stage: 4-ai-platform, sa: TF_SA_AI_PLATFORM }
+          - { stage: 5-sandboxes, sa: TF_SA_SANDBOXES }
+    uses: ./.github/workflows/_etapa.yml
+    with:
+      stage: ${{ matrix.stage }}
+      service_account: ${{ vars[matrix.sa] }}
+      fail_on_changes: true

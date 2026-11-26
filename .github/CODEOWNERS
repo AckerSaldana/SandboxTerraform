@@ -1,0 +1,8 @@
+# Todo cambio pasa por la plataforma
+*                              @AckerSaldana
+
+# Seguridad, politicas y catalogo: revision obligatoria de la plataforma.
+# Al crecer el equipo, sustituir por los grupos de seguridad y de finanzas.
+/policies/                     @AckerSaldana
+/stages/2-security/            @AckerSaldana
+/stages/5-sandboxes/profiles.yaml @AckerSaldana

@@ -1,0 +1,52 @@
+name: Solicitud de sandbox
+description: Pide un sandbox de IA para tu equipo. Se convierte en un pull request.
+title: "Sandbox: "
+labels: [sandbox]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Nombre del equipo
+      description: De 3 a 15 caracteres, minusculas, digitos y guion medio
+      placeholder: fraude
+    validations:
+      required: true
+  - type: input
+    id: owner_group
+    attributes:
+      label: Grupo responsable
+      description: Grupo de Google, no una cuenta personal
+      placeholder: gcp-fraude@example.com
+    validations:
+      required: true
+  - type: input
+    id: cost_center
+    attributes:
+      label: Centro de costos
+      placeholder: cc-0000
+    validations:
+      required: true
+  - type: input
+    id: expires
+    attributes:
+      label: Fecha de fin
+      description: AAAA-MM-DD, maximo 180 dias
+      placeholder: "2027-04-30"
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Perfil
+      description: Para que se usara el sandbox. Ver docs/guia-equipos.md
+      options: [rag, finetuning, modelos-abiertos, ml-clasico, agentes]
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Talla
+      description: Define presupuesto mensual y cuota de GPU
+      options: [s, m, l]
+    validations:
+      required: true

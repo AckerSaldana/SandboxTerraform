@@ -1,0 +1,9 @@
+name: vision
+owner_group: gcp-vision@example.com
+cost_center: cc-2210
+expires: "2027-02-28"
+profile: finetuning
+size: m
+subnet_index: 1
+# Ajustes opcionales sobre la talla. Pasan por revision en el pull request.
+monthly_budget_usd: 1800

@@ -1,0 +1,81 @@
+# Catalogo de sandboxes. Un equipo elige un perfil (para que lo quiere) y
+# una talla (cuanto necesita). El perfil decide que servicios y permisos
+# recibe; la talla decide presupuesto mensual y cuota de GPU.
+#
+# Los montos son valores iniciales y se ajustan con el gasto real que
+# muestran las vistas costo_por_equipo y costo_por_experimento.
+
+limits:
+  max_monthly_budget_usd: 5000   # tope de cualquier sandbox, con o sin ajuste
+  max_days: 180                  # vigencia maxima de un sandbox
+  gpu_types: [l4, a100, h100]
+
+base:
+  services:
+    - aiplatform.googleapis.com
+    - bigquery.googleapis.com
+    - logging.googleapis.com
+    - monitoring.googleapis.com
+    - storage.googleapis.com
+  roles:
+    - roles/aiplatform.user
+    - roles/bigquery.user
+    - roles/storage.objectUser
+    - roles/logging.viewer
+    - roles/monitoring.viewer
+
+profiles:
+  rag:
+    description: Busqueda y respuestas sobre documentos con modelos administrados
+    services: [discoveryengine.googleapis.com, modelarmor.googleapis.com, run.googleapis.com]
+    roles: [roles/run.developer]
+    data_access: [curated]
+    workbench: true
+    sizes:
+      s: { monthly_budget_usd: 300, gpu_quota: {} }
+      m: { monthly_budget_usd: 800, gpu_quota: {} }
+      l: { monthly_budget_usd: 2000, gpu_quota: { l4: 1 } }
+
+  finetuning:
+    description: Ajuste fino de modelos con GPU en Spot o inicio flexible
+    services: [compute.googleapis.com, notebooks.googleapis.com]
+    roles: [roles/notebooks.viewer]
+    data_access: [curated]
+    workbench: true
+    sizes:
+      s: { monthly_budget_usd: 600, gpu_quota: { l4: 1 } }
+      m: { monthly_budget_usd: 1500, gpu_quota: { l4: 2, a100: 1 } }
+      l: { monthly_budget_usd: 4000, gpu_quota: { l4: 4, a100: 2 } }
+
+  modelos-abiertos:
+    description: Despliegue de modelos abiertos en endpoints privados
+    services: [compute.googleapis.com, modelarmor.googleapis.com]
+    roles: []
+    data_access: []
+    workbench: false
+    sizes:
+      s: { monthly_budget_usd: 500, gpu_quota: { l4: 1 } }
+      m: { monthly_budget_usd: 1200, gpu_quota: { l4: 2 } }
+      l: { monthly_budget_usd: 3000, gpu_quota: { l4: 4, a100: 1 } }
+
+  ml-clasico:
+    description: Modelos tabulares y analitica sin GPU
+    services: [compute.googleapis.com, notebooks.googleapis.com]
+    roles: [roles/notebooks.viewer, roles/bigquery.jobUser]
+    data_access: [curated]
+    workbench: true
+    sizes:
+      s: { monthly_budget_usd: 200, gpu_quota: {} }
+      m: { monthly_budget_usd: 500, gpu_quota: {} }
+      l: { monthly_budget_usd: 1200, gpu_quota: {} }
+
+  agentes:
+    description: Agentes sobre Cloud Run con modelos administrados
+    services: [run.googleapis.com, modelarmor.googleapis.com, secretmanager.googleapis.com]
+    roles: [roles/run.developer]
+    data_access: [curated]
+    workbench: false
+    sizes:
+      s: { monthly_budget_usd: 300, gpu_quota: {} }
+      m: { monthly_budget_usd: 700, gpu_quota: {} }
+      l: { monthly_budget_usd: 1500, gpu_quota: {} }
